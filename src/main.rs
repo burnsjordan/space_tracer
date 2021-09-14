@@ -16,6 +16,7 @@ const REFLECTION_RECURSION_DEPTH: u8 = 0;
 const NUM_THREADS: u8 = 6; // Needs to be even or one
 const SHOW_DEBUG_LOGS: bool = true;
 const SUBSAMP_RATE: u8 = 1; // 1 disables subsampling
+const SUPERSAMP_RATE: u8 = 2; // 1 disables supersampling, max 15 due to u8 * u8 overflow
 const SHADOWS_ON: bool = true;
 const RENDER_STATIC_IMAGE: bool = false; // Disables re-rendering scene
 const START_FULLSCREEN: bool = false;
@@ -636,27 +637,48 @@ fn render_scene(
             for x in left_pixel_number..right_pixel_number {
                 for y in top_pixel_number..bottom_pixel_number {
                     if x % SUBSAMP_RATE as i32 == 0 && y % SUBSAMP_RATE as i32 == 0 {
-                        let ray_direction: Vec3 = camera_rotation_matrix
-                            * canvas_to_viewport(x as f32, y as f32, screen_width, screen_height);
-                        let color_option: Option<(u8, u8, u8)> = trace_ray(
-                            camera_pos,
-                            ray_direction,
-                            1.0,
-                            INF,
-                            &scene_spheres,
-                            &scene_lights,
-                            REFLECTION_RECURSION_DEPTH,
-                        );
-                        if let Some(color) = color_option {
-                            for i in 0..SUBSAMP_RATE {
-                                for j in 0..SUBSAMP_RATE {
-                                    put_pixel(
-                                        (x as f32 + i as f32) / (screen_width / 2) as f32,
-                                        (y as f32 + j as f32) / (screen_height / 2) as f32,
-                                        color,
-                                        &mut temp_vertex_data,
+                        let mut color_totals: (u16, u16, u16) = (0, 0, 0);
+                        let step_size = 1.0 / (SUPERSAMP_RATE as f32 + 1.0);
+                        for a in 1..(SUPERSAMP_RATE + 1) {
+                            for b in 1..(SUPERSAMP_RATE + 1) {
+                                let ray_direction: Vec3 = camera_rotation_matrix
+                                    * canvas_to_viewport(
+                                        x as f32 + (a as f32 * step_size),
+                                        y as f32 + (b as f32 * step_size),
+                                        screen_width,
+                                        screen_height,
+                                    );
+                                let color_option: Option<(u8, u8, u8)> = trace_ray(
+                                    camera_pos,
+                                    ray_direction,
+                                    1.0,
+                                    INF,
+                                    &scene_spheres,
+                                    &scene_lights,
+                                    REFLECTION_RECURSION_DEPTH,
+                                );
+                                if let Some(color) = color_option {
+                                    color_totals = (
+                                        color_totals.0 + color.0 as u16,
+                                        color_totals.1 + color.1 as u16,
+                                        color_totals.2 + color.2 as u16,
                                     );
                                 }
+                            }
+                        }
+                        let color_average = (
+                            (color_totals.0 / (SUPERSAMP_RATE * SUPERSAMP_RATE) as u16) as u8,
+                            (color_totals.1 / (SUPERSAMP_RATE * SUPERSAMP_RATE) as u16) as u8,
+                            (color_totals.2 / (SUPERSAMP_RATE * SUPERSAMP_RATE) as u16) as u8,
+                        );
+                        for i in 0..SUBSAMP_RATE {
+                            for j in 0..SUBSAMP_RATE {
+                                put_pixel(
+                                    (x as f32 + i as f32) / (screen_width / 2) as f32,
+                                    (y as f32 + j as f32) / (screen_height / 2) as f32,
+                                    color_average,
+                                    &mut temp_vertex_data,
+                                );
                             }
                         }
                     }
@@ -787,7 +809,10 @@ fn send_camera_information_update(
     if tx.send([camera_pos, camera_rot, window_size]).is_ok() {}
 }
 
-fn start_scene_render_thread(el_proxy: glutin::event_loop::EventLoopProxy<std::vec::Vec<f32>>, rx: std::sync::mpsc::Receiver<[Vec3; 3]>) {
+fn start_scene_render_thread(
+    el_proxy: glutin::event_loop::EventLoopProxy<std::vec::Vec<f32>>,
+    rx: std::sync::mpsc::Receiver<[Vec3; 3]>,
+) {
     // Move graphics rendering to separate thread so the main thread can move to the event loop
     // glutin event loop is required to be on main thread for certain platforms (iOS)
     thread::spawn(move || {
@@ -874,7 +899,10 @@ fn start_scene_render_thread(el_proxy: glutin::event_loop::EventLoopProxy<std::v
     });
 }
 
-fn start_event_loop(event_loop: glutin::event_loop::EventLoop<std::vec::Vec<f32>>, tx: std::sync::mpsc::Sender<[Vec3; 3]>) {
+fn start_event_loop(
+    event_loop: glutin::event_loop::EventLoop<std::vec::Vec<f32>>,
+    tx: std::sync::mpsc::Sender<[Vec3; 3]>,
+) {
     let mut camera_pos = CAMERA_STARTING_POSITION;
     let mut camera_rot = Vec3 {
         a: CAMERA_STARTING_ROTATION_X_ANGLE,
