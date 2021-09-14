@@ -589,8 +589,8 @@ fn trace_ray(
 }
 
 fn render_scene(
-    scene_spheres: Vec<Sphere>,
-    scene_lights: Vec<Light>,
+    scene_spheres: &Vec<Sphere>,
+    scene_lights: &Vec<Light>,
     camera_pos: Vec3,
     camera_rotation_matrix: RotationMatrix3D,
     screen_width: i32,
@@ -602,8 +602,8 @@ fn render_scene(
     let mut children = vec![];
 
     for i in 0..NUM_THREADS {
-        let tss = scene_spheres.clone();
-        let tsl = scene_lights.clone();
+        let scene_spheres = scene_spheres.clone();
+        let scene_lights = scene_lights.clone();
         children.push(thread::spawn(move || {
             let thread_now = SystemTime::now();
             let mut temp_vertex_data = vec![0 as f32; 0];
@@ -643,8 +643,8 @@ fn render_scene(
                             ray_direction,
                             1.0,
                             INF,
-                            &tss,
-                            &tsl,
+                            &scene_spheres,
+                            &scene_lights,
                             REFLECTION_RECURSION_DEPTH,
                         );
                         if let Some(color) = color_option {
@@ -787,59 +787,24 @@ fn send_camera_information_update(
     if tx.send([camera_pos, camera_rot, window_size]).is_ok() {}
 }
 
-fn main() {
-    let (tx, rx) = mpsc::channel();
-
-    let scene_spheres = build_scene_objects();
-    let scene_lights = build_scene_lights();
-
-    let mut camera_pos = CAMERA_STARTING_POSITION;
-    let mut camera_rot = Vec3 {
-        a: CAMERA_STARTING_ROTATION_X_ANGLE,
-        b: CAMERA_STARTING_ROTATION_Y_ANGLE,
-        c: CAMERA_STARTING_ROTATION_Z_ANGLE,
-    };
-
-    // Setup opengl window using glutin
-    let event_loop = glutin::event_loop::EventLoop::<Vec<f32>>::with_user_event();
-    let window: glutin::window::WindowBuilder;
-    if START_FULLSCREEN {
-        window = glutin::window::WindowBuilder::new()
-            .with_title("SpaceTracer")
-            .with_inner_size(glutin::dpi::PhysicalSize {
-                height: STARTING_SCREEN_HEIGHT * SCREEN_MULTIPLIER,
-                width: STARTING_SCREEN_WIDTH * SCREEN_MULTIPLIER,
-            })
-            .with_fullscreen(Some(glutin::window::Fullscreen::Borderless(None)));
-    } else {
-        window = glutin::window::WindowBuilder::new()
-            .with_title("SpaceTracer")
-            .with_inner_size(glutin::dpi::PhysicalSize {
-                height: STARTING_SCREEN_HEIGHT * SCREEN_MULTIPLIER,
-                width: STARTING_SCREEN_WIDTH * SCREEN_MULTIPLIER,
-            })
-            .with_maximized(START_MAXIMIZED);
-    }
-    let gl_window = glutin::ContextBuilder::new()
-        .build_windowed(window, &event_loop)
-        .unwrap();
-    let gl_window = unsafe { gl_window.make_current() }.unwrap();
-    gl::load_with(|symbol| gl_window.get_proc_address(symbol));
-    let vertex_shader = compile_shader(VS_SRC, gl::VERTEX_SHADER);
-    let fragment_shader = compile_shader(FS_SRC, gl::FRAGMENT_SHADER);
-    let program = link_program(vertex_shader, fragment_shader);
-    let (vao, vbo) = setup_graphics(program);
-    let el_proxy = event_loop.create_proxy();
-    let mut window_width: i32 = gl_window.window().inner_size().width as i32;
-    let mut window_height: i32 = gl_window.window().inner_size().height as i32;
-    let mut last_render_time: SystemTime = SystemTime::now();
-
+fn start_scene_render_thread(el_proxy: glutin::event_loop::EventLoopProxy<std::vec::Vec<f32>>, rx: std::sync::mpsc::Receiver<[Vec3; 3]>) {
     // Move graphics rendering to separate thread so the main thread can move to the event loop
     // glutin event loop is required to be on main thread for certain platforms (iOS)
     thread::spawn(move || {
         // Render new scene
+        let mut window_width = STARTING_SCREEN_WIDTH;
+        let mut window_height = STARTING_SCREEN_HEIGHT;
+        let mut camera_pos = CAMERA_STARTING_POSITION;
+        let mut camera_rot = Vec3 {
+            a: CAMERA_STARTING_ROTATION_X_ANGLE,
+            b: CAMERA_STARTING_ROTATION_Y_ANGLE,
+            c: CAMERA_STARTING_ROTATION_Z_ANGLE,
+        };
         let camera_rotation_matrix: RotationMatrix3D =
             build_rotation_matrix_3d(camera_rot.a, camera_rot.b, camera_rot.c);
+        let scene_spheres = build_scene_objects();
+        let scene_lights = build_scene_lights();
+
         if window_width % 2 != 0 {
             window_width += 1;
         }
@@ -847,8 +812,8 @@ fn main() {
             window_height += 1;
         }
         let vertex_data = render_scene(
-            scene_spheres.clone(),
-            scene_lights.clone(),
+            &scene_spheres,
+            &scene_lights,
             camera_pos,
             camera_rotation_matrix,
             window_width,
@@ -882,8 +847,8 @@ fn main() {
                     window_height += 1;
                 }
                 let vertex_data = render_scene(
-                    scene_spheres.clone(),
-                    scene_lights.clone(),
+                    &scene_spheres,
+                    &scene_lights,
                     camera_pos,
                     camera_rotation_matrix,
                     window_width,
@@ -907,8 +872,46 @@ fn main() {
             }
         }
     });
+}
 
+fn start_event_loop(event_loop: glutin::event_loop::EventLoop<std::vec::Vec<f32>>, tx: std::sync::mpsc::Sender<[Vec3; 3]>) {
+    let mut camera_pos = CAMERA_STARTING_POSITION;
+    let mut camera_rot = Vec3 {
+        a: CAMERA_STARTING_ROTATION_X_ANGLE,
+        b: CAMERA_STARTING_ROTATION_Y_ANGLE,
+        c: CAMERA_STARTING_ROTATION_Z_ANGLE,
+    };
+    let mut last_render_time: SystemTime = SystemTime::now();
     let mut vertex_data: Vec<f32> = vec![0.0; 1];
+
+    // Setup opengl window using glutin
+    let window: glutin::window::WindowBuilder;
+    if START_FULLSCREEN {
+        window = glutin::window::WindowBuilder::new()
+            .with_title("SpaceTracer")
+            .with_inner_size(glutin::dpi::PhysicalSize {
+                height: STARTING_SCREEN_HEIGHT * SCREEN_MULTIPLIER,
+                width: STARTING_SCREEN_WIDTH * SCREEN_MULTIPLIER,
+            })
+            .with_fullscreen(Some(glutin::window::Fullscreen::Borderless(None)));
+    } else {
+        window = glutin::window::WindowBuilder::new()
+            .with_title("SpaceTracer")
+            .with_inner_size(glutin::dpi::PhysicalSize {
+                height: STARTING_SCREEN_HEIGHT * SCREEN_MULTIPLIER,
+                width: STARTING_SCREEN_WIDTH * SCREEN_MULTIPLIER,
+            })
+            .with_maximized(START_MAXIMIZED);
+    }
+    let gl_window = glutin::ContextBuilder::new()
+        .build_windowed(window, &event_loop)
+        .unwrap();
+    let gl_window = unsafe { gl_window.make_current() }.unwrap();
+    gl::load_with(|symbol| gl_window.get_proc_address(symbol));
+    let vertex_shader = compile_shader(VS_SRC, gl::VERTEX_SHADER);
+    let fragment_shader = compile_shader(FS_SRC, gl::FRAGMENT_SHADER);
+    let program = link_program(vertex_shader, fragment_shader);
+    let (vao, vbo) = setup_graphics(program);
 
     event_loop.run(move |event, _, control_flow| {
         use glutin::event::{DeviceEvent, Event, WindowEvent};
@@ -1287,4 +1290,16 @@ fn main() {
             _ => (),
         }
     });
+}
+
+fn main() {
+    // Setup communication between threads
+    let (tx, rx) = mpsc::channel();
+
+    // Setup event loop
+    let event_loop = glutin::event_loop::EventLoop::<Vec<f32>>::with_user_event();
+    let el_proxy = event_loop.create_proxy();
+
+    start_scene_render_thread(el_proxy, rx);
+    start_event_loop(event_loop, tx);
 }
