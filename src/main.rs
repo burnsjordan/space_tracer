@@ -2,7 +2,7 @@ extern crate gl;
 extern crate glutin;
 
 use gl::types::*;
-use std::{ffi::CString, mem, ops, ptr, str, sync::mpsc, time::SystemTime, thread, time};
+use std::{ffi::CString, mem, ops, ptr, str, sync::mpsc, thread, time, time::SystemTime};
 
 // Settings
 const STARTING_SCREEN_HEIGHT: i32 = 768;
@@ -49,11 +49,11 @@ impl ops::Add for Vec3 {
     type Output = Self;
 
     fn add(self, other: Self) -> Self {
-        return Vec3 {
+        Vec3 {
             a: self.a + other.a,
             b: self.b + other.b,
             c: self.c + other.c,
-        };
+        }
     }
 }
 
@@ -61,11 +61,11 @@ impl ops::Sub for Vec3 {
     type Output = Self;
 
     fn sub(self, other: Self) -> Self {
-        return Vec3 {
+        Vec3 {
             a: self.a - other.a,
             b: self.b - other.b,
             c: self.c - other.c,
-        };
+        }
     }
 }
 
@@ -73,11 +73,11 @@ impl ops::Mul<f32> for Vec3 {
     type Output = Self;
 
     fn mul(self, other: f32) -> Self {
-        return Vec3 {
+        Vec3 {
             a: self.a * other,
             b: self.b * other,
             c: self.c * other,
-        };
+        }
     }
 }
 
@@ -85,11 +85,11 @@ impl ops::Mul<Vec3> for f32 {
     type Output = Vec3;
 
     fn mul(self, other: Vec3) -> Vec3 {
-        return Vec3 {
+        Vec3 {
             a: self * other.a,
             b: self * other.b,
             c: self * other.c,
-        };
+        }
     }
 }
 
@@ -97,11 +97,11 @@ impl ops::Div<f32> for Vec3 {
     type Output = Self;
 
     fn div(self, other: f32) -> Self {
-        return Vec3 {
+        Vec3 {
             a: self.a / other,
             b: self.b / other,
             c: self.c / other,
-        };
+        }
     }
 }
 
@@ -122,16 +122,16 @@ impl ops::Mul<Vec3> for RotationMatrix3D {
     type Output = Vec3;
 
     fn mul(self, other: Vec3) -> Vec3 {
-        return Vec3 {
+        Vec3 {
             a: self.a * other.a + self.b * other.b + self.c * other.c,
             b: self.d * other.a + self.e * other.b + self.f * other.c,
             c: self.g * other.a + self.h * other.b + self.i * other.c,
-        };
+        }
     }
 }
 
 fn build_rotation_matrix_3d(alpha: f32, beta: f32, gamma: f32) -> RotationMatrix3D {
-    return RotationMatrix3D {
+    RotationMatrix3D {
         a: alpha.cos() * beta.cos(),
         b: alpha.cos() * beta.sin() * gamma.sin() - alpha.sin() * gamma.cos(),
         c: alpha.cos() * beta.sin() * gamma.cos() + alpha.sin() * gamma.sin(),
@@ -141,7 +141,7 @@ fn build_rotation_matrix_3d(alpha: f32, beta: f32, gamma: f32) -> RotationMatrix
         g: -1.0 * beta.sin(),
         h: beta.cos() * gamma.sin(),
         i: beta.cos() * gamma.cos(),
-    };
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -169,7 +169,7 @@ struct Light {
 }
 
 // Shader sources
-static VS_SRC: &'static str = "
+static VS_SRC: &str = "
 #version 330 core
 layout (location = 0) in vec2 position;
 layout (location = 1) in vec3 color;
@@ -179,7 +179,7 @@ void main() {
     vertexColor = vec4(color, 1.0);
 }";
 
-static FS_SRC: &'static str = "
+static FS_SRC: &str = "
 #version 330 core
 out vec4 out_color;
 in vec4 vertexColor;
@@ -214,9 +214,7 @@ fn compile_shader(src: &str, ty: GLenum) -> GLuint {
             );
             panic!(
                 "{}",
-                str::from_utf8(&buf)
-                    .ok()
-                    .expect("ShaderInfoLog not valid utf8")
+                str::from_utf8(&buf).expect("ShaderInfoLog not valid utf8")
             );
         }
     }
@@ -247,9 +245,7 @@ fn link_program(vs: GLuint, fs: GLuint) -> GLuint {
             );
             panic!(
                 "{}",
-                str::from_utf8(&buf)
-                    .ok()
-                    .expect("ProgramInfoLog not valid utf8")
+                str::from_utf8(&buf).expect("ProgramInfoLog not valid utf8")
             );
         }
         program
@@ -258,9 +254,9 @@ fn link_program(vs: GLuint, fs: GLuint) -> GLuint {
 
 fn min(a: f32, b: f32) -> f32 {
     if a < b {
-        return a;
+        a
     } else {
-        return b;
+        b
     }
 }
 
@@ -302,18 +298,18 @@ fn setup_graphics(program: u32) -> (u32, u32) {
         );
         gl::PointSize(SCREEN_MULTIPLIER as f32);
     }
-    return (vao, vbo);
+    (vao, vbo)
 }
 
 fn draw_graphics(
     gl_window: &glutin::ContextWrapper<glutin::PossiblyCurrent, glutin::window::Window>,
-    vertex_data: &Vec<GLfloat>,
+    vertex_data: &[GLfloat],
 ) {
     unsafe {
         // Clear the screen to black
         gl::ClearColor(0.0, 0.0, 0.0, 0.0);
         gl::Clear(gl::COLOR_BUFFER_BIT);
-        if vertex_data.len() > 0 {
+        if !vertex_data.is_empty() {
             gl::BufferData(
                 gl::ARRAY_BUFFER,
                 (vertex_data.len() * mem::size_of::<GLfloat>()) as GLsizeiptr,
@@ -343,11 +339,11 @@ fn put_pixel(x: f32, y: f32, color: (u8, u8, u8), vertex_data: &mut Vec<GLfloat>
 }
 
 fn canvas_to_viewport(cx: f32, cy: f32, screen_width: i32, screen_height: i32) -> Vec3 {
-    return Vec3 {
+    Vec3 {
         a: cx / screen_width as f32,
         b: cy * (screen_height as f32 / screen_width as f32) / screen_height as f32,
         c: DISTANCE_TO_VIEWPORT,
-    };
+    }
 }
 
 fn dot_product(a: Vec3, b: Vec3) -> f32 {
@@ -355,7 +351,7 @@ fn dot_product(a: Vec3, b: Vec3) -> f32 {
     product += a.a * b.a;
     product += a.b * b.b;
     product += a.c * b.c;
-    return product;
+    product
 }
 
 fn vector_length(a: Vec3) -> f32 {
@@ -363,7 +359,7 @@ fn vector_length(a: Vec3) -> f32 {
     sum += a.a * a.a;
     sum += a.b * a.b;
     sum += a.c * a.c;
-    return sum.sqrt();
+    sum.sqrt()
 }
 
 fn intersect_ray_sphere(
@@ -380,11 +376,11 @@ fn intersect_ray_sphere(
 
     let discriminant: f32 = (b * b) - (4.0 * a * c);
     if discriminant < 0.0 {
-        return (INF, INF);
+        (INF, INF)
     } else {
         let t1: f32 = (-b + discriminant.sqrt()) / (2.0 * a);
         let t2: f32 = (-b - discriminant.sqrt()) / (2.0 * a);
-        return (t1, t2);
+        (t1, t2)
     }
 }
 
@@ -393,7 +389,7 @@ fn closest_intersection(
     ray_direction: Vec3,
     t_min: f32,
     t_max: f32,
-    spheres: &Vec<Sphere>,
+    spheres: &[Sphere],
 ) -> (Option<Sphere>, f32) {
     let mut closest_t: f32 = INF;
     let mut closest_sphere: Option<Sphere> = None;
@@ -409,7 +405,7 @@ fn closest_intersection(
             closest_sphere = Some(*sphere);
         }
     }
-    return (closest_sphere, closest_t);
+    (closest_sphere, closest_t)
 }
 
 // For shadows it doesn't need to be the closest intersection
@@ -419,7 +415,7 @@ fn closest_intersection_shadow(
     ray_direction: Vec3,
     t_min: f32,
     t_max: f32,
-    spheres: &Vec<Sphere>,
+    spheres: &[Sphere],
 ) -> Option<Sphere> {
     let closest_t: f32 = INF;
     let mut closest_sphere: Option<Sphere> = None;
@@ -435,19 +431,19 @@ fn closest_intersection_shadow(
             return closest_sphere;
         }
     }
-    return closest_sphere;
+    closest_sphere
 }
 
 fn reflect_ray(r: Vec3, n: Vec3) -> Vec3 {
-    return (2.0 * n * dot_product(n, r)) - r;
+    (2.0 * n * dot_product(n, r)) - r
 }
 
 fn compute_lighting(
     point_position: Vec3,
     surface_normal: Vec3,
     v: Vec3,
-    spheres: &Vec<Sphere>,
-    light: &Vec<Light>,
+    spheres: &[Sphere],
+    light: &[Light],
     specular: f32,
 ) -> f32 {
     let mut i = 0.0;
@@ -478,7 +474,8 @@ fn compute_lighting(
                 if !SHADOWS_ON {
                     shadow_sphere = None;
                 } else {
-                    shadow_sphere = closest_intersection_shadow(point_position, l, EPSILON, t_max, &spheres);
+                    shadow_sphere =
+                        closest_intersection_shadow(point_position, l, EPSILON, t_max, spheres);
                 }
                 if shadow_sphere.is_none() {
                     let n_dot_l: f32 = dot_product(surface_normal, l);
@@ -486,7 +483,7 @@ fn compute_lighting(
                         i += light.intensity * n_dot_l
                             / (vector_length(surface_normal) * vector_length(l));
                     }
-                    if specular != -1.0 {
+                    if (specular - -1.0).abs() > f32::EPSILON {
                         let r = (2.0 * surface_normal * dot_product(surface_normal, l)) - l;
                         let r_dot_v = dot_product(r, v);
                         if r_dot_v > 0.0 {
@@ -519,7 +516,8 @@ fn compute_lighting(
                 if !SHADOWS_ON {
                     shadow_sphere = None;
                 } else {
-                    shadow_sphere = closest_intersection_shadow(point_position, l, EPSILON, t_max, &spheres);
+                    shadow_sphere =
+                        closest_intersection_shadow(point_position, l, EPSILON, t_max, spheres);
                 }
                 if shadow_sphere.is_none() {
                     let n_dot_l: f32 = dot_product(surface_normal, l);
@@ -527,7 +525,7 @@ fn compute_lighting(
                         i += light.intensity * n_dot_l
                             / (vector_length(surface_normal) * vector_length(l));
                     }
-                    if specular != -1.0 {
+                    if (specular - -1.0).abs() > f32::EPSILON {
                         let r = (2.0 * surface_normal * dot_product(surface_normal, l)) - l;
                         let r_dot_v = dot_product(r, v);
                         if r_dot_v > 0.0 {
@@ -539,7 +537,7 @@ fn compute_lighting(
             }
         }
     }
-    return i;
+    i
 }
 
 fn trace_ray(
@@ -547,48 +545,46 @@ fn trace_ray(
     ray_direction: Vec3,
     t_min: f32,
     t_max: f32,
-    spheres: &Vec<Sphere>,
-    lights: &Vec<Light>,
+    spheres: &[Sphere],
+    lights: &[Light],
     rec_depth: u8,
 ) -> Option<(u8, u8, u8)> {
     let (closest_sphere, closest_t) =
-        closest_intersection(camera_pos, ray_direction, t_min, t_max, &spheres);
-    if closest_sphere.is_none() {
-        return None;
-    } else {
-        let cs: Sphere = closest_sphere.unwrap();
+        closest_intersection(camera_pos, ray_direction, t_min, t_max, spheres);
+    if let Some(cs) = closest_sphere {
         let p: Vec3 = camera_pos + (ray_direction * closest_t);
         let n: Vec3 = p - cs.center;
         let n = n / vector_length(n);
         let local_color: (u8, u8, u8) = (
             (cs.color.0 as f32
-                * compute_lighting(p, n, -1.0 * ray_direction, &spheres, &lights, cs.specular))
+                * compute_lighting(p, n, -1.0 * ray_direction, spheres, lights, cs.specular))
                 as u8,
             (cs.color.1 as f32
-                * compute_lighting(p, n, -1.0 * ray_direction, &spheres, &lights, cs.specular))
+                * compute_lighting(p, n, -1.0 * ray_direction, spheres, lights, cs.specular))
                 as u8,
             (cs.color.2 as f32
-                * compute_lighting(p, n, -1.0 * ray_direction, &spheres, &lights, cs.specular))
+                * compute_lighting(p, n, -1.0 * ray_direction, spheres, lights, cs.specular))
                 as u8,
         );
         let r = cs.reflective;
-        if rec_depth <= 0 || r <= 0.0 {
-            return Some(local_color);
+        if rec_depth == 0 || r <= 0.0 {
+            Some(local_color)
         } else {
             let refl_ray: Vec3 = reflect_ray(-1.0 * ray_direction, n);
             let reflected_sphere =
                 trace_ray(p, refl_ray, EPSILON, INF, spheres, lights, rec_depth - 1);
-            if reflected_sphere.is_none() {
-                return Some(local_color);
+            if let Some(rs) = reflected_sphere {
+                Some((
+                    (local_color.0 as f32 * (1.0 - r) + rs.0 as f32 * r) as u8,
+                    (local_color.1 as f32 * (1.0 - r) + rs.1 as f32 * r) as u8,
+                    (local_color.2 as f32 * (1.0 - r) + rs.2 as f32 * r) as u8,
+                ))
             } else {
-                let reflected_color = reflected_sphere.unwrap();
-                return Some((
-                    (local_color.0 as f32 * (1.0 - r) + reflected_color.0 as f32 * r) as u8,
-                    (local_color.1 as f32 * (1.0 - r) + reflected_color.1 as f32 * r) as u8,
-                    (local_color.2 as f32 * (1.0 - r) + reflected_color.2 as f32 * r) as u8,
-                ));
+                Some(local_color)
             }
         }
+    } else {
+        None
     }
 }
 
@@ -612,7 +608,7 @@ fn render_scene(
             let thread_now = SystemTime::now();
             let mut temp_vertex_data = vec![0 as f32; 0];
             let mut screen_width_per_thread = 2 * screen_width / NUM_THREADS as i32;
-            let mut screen_height_per_thread = screen_height / 2 as i32;
+            let mut screen_height_per_thread = screen_height / 2;
             let xi: u8;
             let yi: u8;
             if NUM_THREADS == 1 {
@@ -651,13 +647,13 @@ fn render_scene(
                             &tsl,
                             REFLECTION_RECURSION_DEPTH,
                         );
-                        if !color_option.is_none() {
+                        if let Some(color) = color_option {
                             for i in 0..SUBSAMP_RATE {
                                 for j in 0..SUBSAMP_RATE {
                                     put_pixel(
                                         (x as f32 + i as f32) / (screen_width / 2) as f32,
                                         (y as f32 + j as f32) / (screen_height / 2) as f32,
-                                        color_option.unwrap(),
+                                        color,
                                         &mut temp_vertex_data,
                                     );
                                 }
@@ -676,7 +672,7 @@ fn render_scene(
                     println!("Error: {:?}", e);
                 }
             }
-            return temp_vertex_data;
+            temp_vertex_data
         }));
     }
 
@@ -696,10 +692,10 @@ fn render_scene(
             println!("Error: {:?}", e);
         }
     }
-    if vertex_data.len() == 0 {
+    if vertex_data.is_empty() {
         put_pixel(0.0, 0.0, (0, 0, 0), &mut vertex_data);
     }
-    return vertex_data;
+    vertex_data
 }
 
 fn build_scene_objects() -> Vec<Sphere> {
@@ -788,10 +784,7 @@ fn send_camera_information_update(
     camera_rot: Vec3,
     window_size: Vec3,
 ) {
-    match tx.send([camera_pos, camera_rot, window_size]) {
-        Ok(_) => (),
-        Err(_) => (),
-    }
+    if tx.send([camera_pos, camera_rot, window_size]).is_ok() {}
 }
 
 fn main() {
@@ -871,16 +864,13 @@ fn main() {
             loop {
                 // Get input from event loop if any
                 let r: Option<[Vec3; 3]> = rx.try_iter().last();
-                match r {
-                    Some(received) => {
-                        camera_pos = received[0];
-                        camera_rot.a = received[1].a;
-                        camera_rot.b = received[1].b;
-                        camera_rot.c = received[1].c;
-                        window_width = received[2].a as i32;
-                        window_height = received[2].b as i32;
-                    }
-                    None => (),
+                if let Some(received) = r {
+                    camera_pos = received[0];
+                    camera_rot.a = received[1].a;
+                    camera_rot.b = received[1].b;
+                    camera_rot.c = received[1].c;
+                    window_width = received[2].a as i32;
+                    window_height = received[2].b as i32;
                 }
                 // Render new scene
                 let camera_rotation_matrix: RotationMatrix3D =
@@ -925,9 +915,9 @@ fn main() {
         use glutin::event_loop::ControlFlow;
         *control_flow = ControlFlow::Wait;
         match event {
-            Event::LoopDestroyed => return,
-            Event::WindowEvent { event, .. } => match event {
-                WindowEvent::CloseRequested => {
+            Event::LoopDestroyed => {}
+            Event::WindowEvent { event, .. } => {
+                if event == WindowEvent::CloseRequested {
                     unsafe {
                         gl::DeleteProgram(program);
                         gl::DeleteShader(fragment_shader);
@@ -937,25 +927,24 @@ fn main() {
                     }
                     *control_flow = ControlFlow::Exit
                 }
-                _ => (),
-            },
+            }
             Event::RedrawRequested(_) => {
-                match tx.send([
-                    camera_pos,
-                    Vec3 {
-                        a: camera_rot.a,
-                        b: camera_rot.b,
-                        c: camera_rot.c,
-                    },
-                    Vec3 {
-                        a: gl_window.window().inner_size().width as f32,
-                        b: gl_window.window().inner_size().height as f32,
-                        c: 0.0,
-                    },
-                ]) {
-                    Ok(_) => (),
-                    Err(_) => (),
-                }
+                if tx
+                    .send([
+                        camera_pos,
+                        Vec3 {
+                            a: camera_rot.a,
+                            b: camera_rot.b,
+                            c: camera_rot.c,
+                        },
+                        Vec3 {
+                            a: gl_window.window().inner_size().width as f32,
+                            b: gl_window.window().inner_size().height as f32,
+                            c: 0.0,
+                        },
+                    ])
+                    .is_ok()
+                {};
                 draw_graphics(&gl_window, &vertex_data);
             }
             Event::UserEvent(vertex_data_new) => {
